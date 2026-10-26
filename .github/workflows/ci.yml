@@ -1,0 +1,59 @@
+name: CI - Integração Contínua
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  CONFIGURATION: Release
+  BUILD_PATH: './bin/Release'
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    name: Build e Testes
+
+    steps:
+    - name: 📥 Checkout do código
+      uses: actions/checkout@v4
+
+    - name: 🔧 Configurar .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: 📦 Restaurar dependências
+      run: dotnet restore
+
+    - name: 🔨 Compilar solução
+      run: dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore
+
+    - name: ✅ Executar testes
+      run: dotnet test --configuration ${{ env.CONFIGURATION }} --no-build --logger "trx" --collect:"XPlat Code Coverage" --verbosity normal
+
+    - name: 📊 Publicar resultados de testes
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: '**/TestResults/**'
+
+    - name: 🎯 Publicar cobertura de testes
+      if: always()
+      uses: codecov/codecov-action@v3
+      with:
+        files: '**/coverage.cobertura.xml'
+        fail_ci_if_error: false
+
+    - name: 🏗️ Publicar artefato de build
+      run: dotnet publish API_FCG_F01/API_FCG_F01.API/API_FCG_F01.API.csproj -c ${{ env.CONFIGURATION }} -o ./publish
+
+    - name: 📤 Upload do artefato para CD
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-build
+        path: ./publish
+        retention-days: 5

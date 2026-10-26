@@ -87,6 +87,6 @@ public sealed class UsuarioService : IUsuarioService
             throw new ArgumentException("A senha deve conter pelo menos um número.");
 
         if (!regexEspeciais.IsMatch(senha))
-            throw new ArgumentException("A senha deve conter pelo menos um caractere especial.");
+            throw new ArgumentException("A senha deve conter pelo menos um caractere especial..");
     }
 }

@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace API_FCG_F01.Infra.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251026144110_criarTabelasIdentity")]
-    partial class criarTabelasIdentity
+    [Migration("20261018145208_CriacaoDoBanco")]
+    partial class CriacaoDoBanco
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
