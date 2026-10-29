@@ -6,89 +6,109 @@ on:
     types:
       - completed
     branches: [ main ]
+  workflow_dispatch:
 
 env:
   IIS_SITE_NAME: 'API_FCG_F01'
   IIS_APP_POOL: 'API_FCG_F01_AppPool'
   DEPLOY_PATH: 'C:\inetpub\wwwroot\API_FCG_F01'
+  APP_URL: 'http://localhost:5095/swagger'
 
 jobs:
   deploy-to-iis:
     runs-on: [self-hosted, windows]
     name: Deploy no IIS
 
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
 
     steps:
-    - name: 📥 Download do artefato de build
-      uses: actions/download-artifact@v4
-      with:
-        name: api-build
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        run-id: ${{ github.event.workflow_run.id }}
-        path: ./build-output
+      - name: 📥 Download do artefato de build
+        uses: actions/download-artifact@v4
+        with:
+          name: api-build
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id || github.run_id }}
+          path: ./build-output
 
-    - name: 🛑 Parar Application Pool no IIS
-      run: |
-        # Para o application pool
-        Import-Module WebAdministration
-        Stop-WebAppPool -Name "${{ env.IIS_APP_POOL }}" -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 3
-      shell: powershell
+      - name: 🔧 Garantir site e app pool no IIS
+        shell: powershell
+        run: |
+          Import-Module WebAdministration
 
-    - name: 🗑️ Limpar diretório de deploy
-      run: |
-        if (Test-Path "${{ env.DEPLOY_PATH }}") {
-          Remove-Item "${{ env.DEPLOY_PATH }}\*" -Recurse -Force
-        }
-      shell: powershell
+          if (-not (Get-ChildItem IIS:\AppPools | Where-Object { $_.Name -eq "${{ env.IIS_APP_POOL }}" })) {
+              New-WebAppPool -Name "${{ env.IIS_APP_POOL }}"
+          }
 
-    - name: 📤 Copiar arquivos para IIS
-      run: |
-        Copy-Item -Path ".\build-output\*" -Destination "${{ env.DEPLOY_PATH }}" -Recurse -Force
-      shell: powershell
+          if (-not (Get-Website -Name "${{ env.IIS_SITE_NAME }}" -ErrorAction SilentlyContinue)) {
+              New-Website -Name "${{ env.IIS_SITE_NAME }}" `
+                -PhysicalPath "${{ env.DEPLOY_PATH }}" `
+                -ApplicationPool "${{ env.IIS_APP_POOL }}" `
+                -Port 5095 `
+                -Protocol http
+          }
 
-    - name: ✅ Iniciar Application Pool no IIS
-      run: |
-        # Inicia o application pool
-        Import-Module WebAdministration
-        Start-WebAppPool -Name "${{ env.IIS_APP_POOL }}" -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 5
-      shell: powershell
+      - name: 🛑 Parar Application Pool no IIS
+        shell: powershell
+        run: |
+          Import-Module WebAdministration
+          Stop-WebAppPool -Name "${{ env.IIS_APP_POOL }}" -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 3
 
-    - name: 🔍 Verificar saúde da aplicação
-      run: |
-        $maxAttempts = 5
-        $attempt = 0
+      - name: 🗑️ Limpar diretório de deploy
+        shell: powershell
+        run: |
+          if (-not (Test-Path "${{ env.DEPLOY_PATH }}")) {
+              New-Item -ItemType Directory -Path "${{ env.DEPLOY_PATH }}" -Force | Out-Null
+          }
 
-        while ($attempt -lt $maxAttempts) {
-          try {
-            $response = Invoke-WebRequest -Uri "http://localhost:5095/swagger" -UseBasicParsing -TimeoutSec 5
-            if ($response.StatusCode -eq 200) {
-              Write-Host "✅ Aplicação está respondendo corretamente!"
-              exit 0
-            }
-          } catch {
-            $attempt++
-            if ($attempt -lt $maxAttempts) {
-              Write-Host "⏳ Tentativa $attempt/$maxAttempts falhada. Aguardando..."
+          Get-ChildItem "${{ env.DEPLOY_PATH }}" -Recurse -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Get-ChildItem "${{ env.DEPLOY_PATH }}" -Force | Remove-Item -Force -ErrorAction SilentlyContinue
+
+      - name: 📤 Copiar arquivos para IIS
+        shell: powershell
+        run: |
+          Copy-Item -Path ".\build-output\*" -Destination "${{ env.DEPLOY_PATH }}" -Recurse -Force
+
+      - name: ✅ Iniciar site e app pool
+        shell: powershell
+        run: |
+          Import-Module WebAdministration
+          Start-WebAppPool -Name "${{ env.IIS_APP_POOL }}" -ErrorAction SilentlyContinue
+          Start-WebSite -Name "${{ env.IIS_SITE_NAME }}" -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+
+      - name: 🔍 Verificar saúde da aplicação
+        shell: powershell
+        run: |
+          $maxAttempts = 10
+          $attempt = 0
+
+          while ($attempt -lt $maxAttempts) {
+            try {
+              $response = Invoke-WebRequest -Uri "${{ env.APP_URL }}" -UseBasicParsing -TimeoutSec 5
+              if ($response.StatusCode -eq 200) {
+                Write-Host "✅ Aplicação está respondendo corretamente!"
+                exit 0
+              }
+            } catch {
+              $attempt++
+              Write-Host "⏳ Tentativa $attempt/$maxAttempts falhou..."
               Start-Sleep -Seconds 5
             }
           }
-        }
 
-        Write-Host "❌ Falha ao verificar saúde da aplicação após $maxAttempts tentativas"
-        exit 1
-      shell: powershell
+          Write-Host "❌ Falha ao verificar saúde da aplicação após $maxAttempts tentativas"
+          exit 1
 
-    - name: 💬 Notificar sucesso
-      if: success()
-      run: |
-        Write-Host "✅ Deploy realizado com sucesso!"
-        Write-Host "🌐 Aplicação disponível em: http://localhost:5095"
+      - name: 💬 Notificar sucesso
+        if: success()
+        shell: powershell
+        run: |
+          Write-Host "✅ Deploy realizado com sucesso!"
+          Write-Host "🌐 Aplicação disponível em: ${{ env.APP_URL }}"
 
-    - name: 💬 Notificar falha
-      if: failure()
-      run: |
-        Write-Host "❌ Falha no deploy. Verifique os logs do IIS."
-      shell: powershell
+      - name: 💬 Notificar falha
+        if: failure()
+        shell: powershell
+        run: |
+          Write-Host "❌ Falha no deploy. Verifique os logs do IIS."

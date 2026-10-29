@@ -1,5 +1,8 @@
 namespace API_FCG_F01.Domain.Entities
 {
+    /// <summary>
+    /// Classe que representa um usuário do sistema.
+    /// </summary>
     public sealed class Usuario : EntityBase
     {
         public string Nome { get; private set; }
