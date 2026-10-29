@@ -33,6 +33,8 @@ namespace API_FCG_F01.Domain.Entities
     //    public void AlterarSenhaHash(string novoHash) => Senha = novoHash ?? throw new ArgumentNullException(nameof(novoHash));        
     //}
 
+
+    
     /// <summary>
     /// Classe que representa um usuário do sistema.
     /// </summary>
@@ -64,10 +66,10 @@ namespace API_FCG_F01.Domain.Entities
         public void AlterarEmail(string? novoEmail)
         {
             if (string.IsNullOrWhiteSpace(novoEmail))
-                throw new ArgumentException("Email não pode ser vazio", nameof(novoEmail));
+                throw new ArgumentException("Email não pode ser vazio");
 
             if (!IsValidEmail(novoEmail))
-                throw new ArgumentException("Formato de email inválido", nameof(novoEmail));
+                throw new ArgumentException("Formato de email inválido");
 
             Email = novoEmail;
         }
@@ -89,5 +91,5 @@ namespace API_FCG_F01.Domain.Entities
                 return false;
             }
         }
-    }
+    }    
 }
