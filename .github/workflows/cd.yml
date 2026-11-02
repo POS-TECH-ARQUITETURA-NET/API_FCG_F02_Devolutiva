@@ -53,62 +53,40 @@ jobs:
           }
 
       - name: 🔧 Garantir App Pool no IIS
-        shell: powershell
+        shell: cmd
         run: |
-          $appPoolName = "${{ env.IIS_APP_POOL }}"
-          $appcmd = "C:\Windows\System32\inetsrv\appcmd.exe"
-          
-          Write-Host "Verificando App Pool: $appPoolName"
-          
-          try {
-              $result = & $appcmd list apppool $appPoolName 2>$null
-              if ($LASTEXITCODE -eq 0) {
-                  Write-Host "✅ App Pool já existe: $appPoolName"
-              } else {
-                  Write-Host "Criando App Pool: $appPoolName"
-                  & $appcmd add apppool /name:$appPoolName
-                  Write-Host "✅ App Pool criado: $appPoolName"
-              }
-          } catch {
-              Write-Host "⚠️  Erro ao verificar app pool: $_"
-          }
+          echo Verificando App Pool...
+          appcmd list apppool "${{ env.IIS_APP_POOL }}" >nul 2>&1
+          if %ERRORLEVEL% neq 0 (
+              echo Criando App Pool...
+              appcmd add apppool /name:"${{ env.IIS_APP_POOL }}"
+              echo ✅ App Pool criado: ${{ env.IIS_APP_POOL }}
+          ) else (
+              echo ✅ App Pool já existe: ${{ env.IIS_APP_POOL }}
+          )
 
       - name: 🔧 Garantir Site no IIS
-        shell: powershell
+        shell: cmd
         run: |
-          $siteName = "${{ env.IIS_SITE_NAME }}"
-          $appPoolName = "${{ env.IIS_APP_POOL }}"
-          $deployPath = "${{ env.DEPLOY_PATH }}"
-          $appcmd = "C:\Windows\System32\inetsrv\appcmd.exe"
-          
-          Write-Host "Verificando Website: $siteName"
-          
-          try {
-              $result = & $appcmd list site $siteName 2>$null
-              if ($LASTEXITCODE -eq 0) {
-                  Write-Host "✅ Website já existe: $siteName"
-                  & $appcmd set site $siteName /physicalPath:$deployPath
-              } else {
-                  Write-Host "Criando Website: $siteName"
-                  & $appcmd add site /name:$siteName /physicalPath:$deployPath /bindings:"http/*:5095:"
-                  & $appcmd set site $siteName "/[path='/'].applicationPool:$appPoolName"
-                  Write-Host "✅ Website criado: $siteName"
-              }
-          } catch {
-              Write-Host "⚠️  Erro ao verificar website: $_"
-          }
+          echo Verificando Website...
+          appcmd list site "${{ env.IIS_SITE_NAME }}" >nul 2>&1
+          if %ERRORLEVEL% neq 0 (
+              echo Criando Website...
+              appcmd add site /name:"${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}" /bindings:http/*:5095:
+              appcmd set site "${{ env.IIS_SITE_NAME }}" /[path='/'].applicationPool:"${{ env.IIS_APP_POOL }}"
+              echo ✅ Website criado: ${{ env.IIS_SITE_NAME }}
+          ) else (
+              echo ✅ Website já existe: ${{ env.IIS_SITE_NAME }}
+              appcmd set site "${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}"
+          )
 
       - name: 🛑 Parar Application Pool no IIS
-        shell: powershell
+        shell: cmd
         run: |
-          $appPoolName = "${{ env.IIS_APP_POOL }}"
-          $appcmd = "C:\Windows\System32\inetsrv\appcmd.exe"
-          
-          Write-Host "Parando App Pool: $appPoolName"
-          & $appcmd stop apppool $appPoolName 2>$null
-          Write-Host "✅ App Pool parado"
-          
-          Start-Sleep -Seconds 3
+          echo Parando App Pool...
+          appcmd stop apppool "${{ env.IIS_APP_POOL }}"
+          echo ✅ App Pool parado
+          timeout /t 3 /nobreak
 
       - name: 🗑️ Limpar diretório de deploy
         shell: powershell
@@ -144,21 +122,17 @@ jobs:
           }
 
       - name: ✅ Iniciar Application Pool e Site no IIS
-        shell: powershell
+        shell: cmd
         run: |
-          $appPoolName = "${{ env.IIS_APP_POOL }}"
-          $siteName = "${{ env.IIS_SITE_NAME }}"
-          $appcmd = "C:\Windows\System32\inetsrv\appcmd.exe"
+          echo Iniciando App Pool...
+          appcmd start apppool "${{ env.IIS_APP_POOL }}"
+          echo ✅ App Pool iniciado
           
-          Write-Host "Iniciando App Pool: $appPoolName"
-          & $appcmd start apppool $appPoolName 2>$null
-          Write-Host "✅ App Pool iniciado"
+          echo Iniciando Website...
+          appcmd start site "${{ env.IIS_SITE_NAME }}"
+          echo ✅ Website iniciado
           
-          Write-Host "Iniciando Website: $siteName"
-          & $appcmd start site $siteName 2>$null
-          Write-Host "✅ Website iniciado"
-          
-          Start-Sleep -Seconds 5
+          timeout /t 5 /nobreak
 
       - name: 🔍 Verificar saúde da aplicação
         shell: powershell
@@ -189,25 +163,22 @@ jobs:
           
           if (-not $success) {
             Write-Host "❌ Aplicação não respondeu após $maxAttempts tentativas"
-            Write-Host "Verificando status do App Pool..."
-            $appcmd = "C:\Windows\System32\inetsrv\appcmd.exe"
-            & $appcmd list apppool "${{ env.IIS_APP_POOL }}"
             exit 1
           }
 
       - name: 💬 Notificar sucesso
         if: success()
-        shell: powershell
+        shell: cmd
         run: |
-          Write-Host ""
-          Write-Host "✅ Deploy realizado com sucesso!"
-          Write-Host "🌐 Aplicação disponível em: ${{ env.APP_URL }}"
-          Write-Host ""
+          echo.
+          echo ✅ Deploy realizado com sucesso!
+          echo 🌐 Aplicação disponível em: ${{ env.APP_URL }}
+          echo.
 
       - name: 💬 Notificar falha
         if: failure()
-        shell: powershell
+        shell: cmd
         run: |
-          Write-Host ""
-          Write-Host "❌ Falha no deploy - Verifique os logs acima"
-          Write-Host ""
+          echo.
+          echo ❌ Falha no deploy - Verifique os logs acima
+          echo.
