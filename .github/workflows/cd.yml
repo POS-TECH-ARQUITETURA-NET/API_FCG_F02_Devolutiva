@@ -13,6 +13,7 @@ env:
   IIS_APP_POOL: 'API_FCG_F01_AppPool'
   DEPLOY_PATH: 'C:\inetpub\wwwroot\API_FCG_F01'
   APP_URL: 'http://localhost:5095/swagger'
+  APPCMD: 'C:\Windows\System32\inetsrv\appcmd.exe'
 
 jobs:
   deploy-to-iis:
@@ -22,12 +23,6 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
 
     steps:
-      - name: 🔓 Habilitar execução de scripts PowerShell
-        shell: powershell
-        run: |
-          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-          Write-Host "✅ Execution Policy definida como Bypass"
-
       - name: 📥 Download do artefato de build
         uses: actions/download-artifact@v4
         with:
@@ -37,93 +32,99 @@ jobs:
           path: ./build-output
 
       - name: 🔍 Verificar se artefato foi baixado
-        shell: powershell
+        shell: cmd
         run: |
-          if (Test-Path ".\build-output") {
-              Write-Host "✅ Artefato encontrado"
-              Get-ChildItem ".\build-output" | Write-Host
-          } else {
-              Write-Host "❌ Artefato NÃO encontrado!"
-              exit 1
-          }
+          if exist ".\build-output" (
+              echo ✅ Artefato encontrado
+              dir ".\build-output"
+          ) else (
+              echo ❌ Artefato NÃO encontrado!
+              exit /b 1
+          )
 
-      - name: 🔧 Garantir site e app pool no IIS
-        shell: powershell
+      - name: 🔧 Criar diretório de deploy
+        shell: cmd
         run: |
-          Write-Host "Iniciando configuração do IIS..."
-          
-          Import-Module WebAdministration -ErrorAction Stop
-          
-          if (-not (Test-Path "${{ env.DEPLOY_PATH }}")) {
-              New-Item -ItemType Directory -Path "${{ env.DEPLOY_PATH }}" -Force | Out-Null
-              Write-Host "✅ Diretório criado: ${{ env.DEPLOY_PATH }}"
-          } else {
-              Write-Host "✅ Diretório já existe: ${{ env.DEPLOY_PATH }}"
-          }
-          
-          $appPoolPath = "IIS:\AppPools\${{ env.IIS_APP_POOL }}"
-          if (-not (Test-Path $appPoolPath)) {
-              New-WebAppPool -Name "${{ env.IIS_APP_POOL }}" -ErrorAction Stop
-              Write-Host "✅ App Pool criado: ${{ env.IIS_APP_POOL }}"
-          } else {
-              Write-Host "✅ App Pool já existe: ${{ env.IIS_APP_POOL }}"
-          }
-          
-          $site = Get-Website -Name "${{ env.IIS_SITE_NAME }}" -ErrorAction SilentlyContinue
-          if (-not $site) {
-              New-Website -Name "${{ env.IIS_SITE_NAME }}" `
-                -PhysicalPath "${{ env.DEPLOY_PATH }}" `
-                -ApplicationPool "${{ env.IIS_APP_POOL }}" `
-                -Port 5095 `
-                -Protocol http `
-                -ErrorAction Stop | Out-Null
-              Write-Host "✅ Website criado: ${{ env.IIS_SITE_NAME }}"
-          } else {
-              Write-Host "✅ Website já existe: ${{ env.IIS_SITE_NAME }}"
-              Set-ItemProperty "IIS:\Sites\${{ env.IIS_SITE_NAME }}" -Name physicalPath -Value "${{ env.DEPLOY_PATH }}" -ErrorAction SilentlyContinue
-          }
+          if not exist "${{ env.DEPLOY_PATH }}" (
+              mkdir "${{ env.DEPLOY_PATH }}"
+              echo ✅ Diretório criado: ${{ env.DEPLOY_PATH }}
+          ) else (
+              echo ✅ Diretório já existe: ${{ env.DEPLOY_PATH }}
+          )
+
+      - name: 🔧 Garantir App Pool no IIS
+        shell: cmd
+        run: |
+          echo Verificando App Pool...
+          "${{ env.APPCMD }}" list apppool "${{ env.IIS_APP_POOL }}" >nul 2>&1
+          if %ERRORLEVEL% neq 0 (
+              echo Criando App Pool...
+              "${{ env.APPCMD }}" add apppool /name:"${{ env.IIS_APP_POOL }}"
+              echo ✅ App Pool criado: ${{ env.IIS_APP_POOL }}
+          ) else (
+              echo ✅ App Pool já existe: ${{ env.IIS_APP_POOL }}
+          )
+
+      - name: 🔧 Garantir Site no IIS
+        shell: cmd
+        run: |
+          echo Verificando Website...
+          "${{ env.APPCMD }}" list site "${{ env.IIS_SITE_NAME }}" >nul 2>&1
+          if %ERRORLEVEL% neq 0 (
+              echo Criando Website...
+              "${{ env.APPCMD }}" add site /name:"${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}" /bindings:http/*:5095:
+              "${{ env.APPCMD }}" set site "${{ env.IIS_SITE_NAME }}" /[path='/'].applicationPool:"${{ env.IIS_APP_POOL }}"
+              echo ✅ Website criado: ${{ env.IIS_SITE_NAME }}
+          ) else (
+              echo ✅ Website já existe: ${{ env.IIS_SITE_NAME }}
+              "${{ env.APPCMD }}" set site "${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}"
+          )
 
       - name: 🛑 Parar Application Pool no IIS
-        shell: powershell
+        shell: cmd
         run: |
-          Write-Host "Parando App Pool..."
-          Import-Module WebAdministration
-          
-          Stop-WebAppPool -Name "${{ env.IIS_APP_POOL }}" -ErrorAction SilentlyContinue
-          Write-Host "✅ App Pool parado"
-          Start-Sleep -Seconds 3
+          echo Parando App Pool...
+          "${{ env.APPCMD }}" stop apppool "${{ env.IIS_APP_POOL }}"
+          echo ✅ App Pool parado
+          timeout /t 3
 
       - name: 🗑️ Limpar diretório de deploy
-        shell: powershell
+        shell: cmd
         run: |
-          Write-Host "Limpando diretório de deploy..."
-          
-          Get-ChildItem -Path "${{ env.DEPLOY_PATH }}" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-          Write-Host "✅ Diretório limpo"
+          echo Limpando diretório de deploy...
+          if exist "${{ env.DEPLOY_PATH }}" (
+              for /d %%x in ("${{ env.DEPLOY_PATH }}\*") do @rd /s /q "%%x"
+              for %%x in ("${{ env.DEPLOY_PATH }}\*") do @del /q "%%x"
+              echo ✅ Diretório limpo
+          )
 
       - name: 📤 Copiar arquivos para IIS
-        shell: powershell
+        shell: cmd
         run: |
-          Write-Host "Copiando arquivos para IIS..."
-          Copy-Item -Path ".\build-output\*" -Destination "${{ env.DEPLOY_PATH }}" -Recurse -Force -ErrorAction Stop
-          Write-Host "✅ Arquivos copiados com sucesso"
+          echo Copiando arquivos para IIS...
+          xcopy ".\build-output\*" "${{ env.DEPLOY_PATH }}" /E /Y /I
+          if %ERRORLEVEL% equ 0 (
+              echo ✅ Arquivos copiados com sucesso
+          ) else (
+              echo ❌ Erro ao copiar arquivos
+              exit /b 1
+          )
 
-      - name: ✅ Iniciar site e app pool
-        shell: powershell
+      - name: ✅ Iniciar Application Pool e Site no IIS
+        shell: cmd
         run: |
-          Write-Host "Iniciando App Pool e Website..."
-          Import-Module WebAdministration
+          echo Iniciando App Pool...
+          "${{ env.APPCMD }}" start apppool "${{ env.IIS_APP_POOL }}"
+          echo ✅ App Pool iniciado
           
-          Start-WebAppPool -Name "${{ env.IIS_APP_POOL }}" -ErrorAction SilentlyContinue
-          Write-Host "✅ App Pool iniciado"
+          echo Iniciando Website...
+          "${{ env.APPCMD }}" start site "${{ env.IIS_SITE_NAME }}"
+          echo ✅ Website iniciado
           
-          Start-Website -Name "${{ env.IIS_SITE_NAME }}" -ErrorAction SilentlyContinue
-          Write-Host "✅ Website iniciado"
-          
-          Start-Sleep -Seconds 5
+          timeout /t 5
 
       - name: 🔍 Verificar saúde da aplicação
-        shell: powershell
+        shell: pwsh
         run: |
           $maxAttempts = 12
           $attempt = 0
@@ -153,13 +154,17 @@ jobs:
 
       - name: 💬 Notificar sucesso
         if: success()
-        shell: powershell
+        shell: cmd
         run: |
-          Write-Host "✅ Deploy realizado com sucesso!"
-          Write-Host "🌐 Aplicação disponível em: ${{ env.APP_URL }}"
+          echo.
+          echo ✅ Deploy realizado com sucesso!
+          echo 🌐 Aplicação disponível em: ${{ env.APP_URL }}
+          echo.
 
       - name: 💬 Notificar falha
         if: failure()
-        shell: powershell
+        shell: cmd
         run: |
-          Write-Host "❌ Falha no deploy"
+          echo.
+          echo ❌ Falha no deploy - Verifique os logs acima
+          echo.
