@@ -56,10 +56,10 @@ jobs:
         shell: cmd
         run: |
           echo Verificando App Pool...
-          appcmd list apppool "${{ env.IIS_APP_POOL }}" >nul 2>&1
+          "C:\Windows\System32\inetsrv\appcmd.exe" list apppool "${{ env.IIS_APP_POOL }}" >nul 2>&1
           if %ERRORLEVEL% neq 0 (
               echo Criando App Pool...
-              appcmd add apppool /name:"${{ env.IIS_APP_POOL }}"
+              "C:\Windows\System32\inetsrv\appcmd.exe" add apppool /name:"${{ env.IIS_APP_POOL }}"
               echo ✅ App Pool criado: ${{ env.IIS_APP_POOL }}
           ) else (
               echo ✅ App Pool já existe: ${{ env.IIS_APP_POOL }}
@@ -69,22 +69,22 @@ jobs:
         shell: cmd
         run: |
           echo Verificando Website...
-          appcmd list site "${{ env.IIS_SITE_NAME }}" >nul 2>&1
+          "C:\Windows\System32\inetsrv\appcmd.exe" list site "${{ env.IIS_SITE_NAME }}" >nul 2>&1
           if %ERRORLEVEL% neq 0 (
               echo Criando Website...
-              appcmd add site /name:"${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}" /bindings:http/*:5095:
-              appcmd set site "${{ env.IIS_SITE_NAME }}" /[path='/'].applicationPool:"${{ env.IIS_APP_POOL }}"
+              "C:\Windows\System32\inetsrv\appcmd.exe" add site /name:"${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}" /bindings:http/*:5095:
+              "C:\Windows\System32\inetsrv\appcmd.exe" set site "${{ env.IIS_SITE_NAME }}" /[path='/'].applicationPool:"${{ env.IIS_APP_POOL }}"
               echo ✅ Website criado: ${{ env.IIS_SITE_NAME }}
           ) else (
               echo ✅ Website já existe: ${{ env.IIS_SITE_NAME }}
-              appcmd set site "${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}"
+              "C:\Windows\System32\inetsrv\appcmd.exe" set site "${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}"
           )
 
       - name: 🛑 Parar Application Pool no IIS
         shell: cmd
         run: |
           echo Parando App Pool...
-          appcmd stop apppool "${{ env.IIS_APP_POOL }}"
+          "C:\Windows\System32\inetsrv\appcmd.exe" stop apppool "${{ env.IIS_APP_POOL }}"
           echo ✅ App Pool parado
           timeout /t 3 /nobreak
 
@@ -125,11 +125,11 @@ jobs:
         shell: cmd
         run: |
           echo Iniciando App Pool...
-          appcmd start apppool "${{ env.IIS_APP_POOL }}"
+          "C:\Windows\System32\inetsrv\appcmd.exe" start apppool "${{ env.IIS_APP_POOL }}"
           echo ✅ App Pool iniciado
           
           echo Iniciando Website...
-          appcmd start site "${{ env.IIS_SITE_NAME }}"
+          "C:\Windows\System32\inetsrv\appcmd.exe" start site "${{ env.IIS_SITE_NAME }}"
           echo ✅ Website iniciado
           
           timeout /t 5 /nobreak
