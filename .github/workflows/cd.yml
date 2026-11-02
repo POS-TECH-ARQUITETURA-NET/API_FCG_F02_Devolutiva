@@ -45,56 +45,56 @@ jobs:
       - name: 🔧 Criar diretório de deploy
         shell: cmd
         run: |
-          if not exist "${{ env.DEPLOY_PATH }}" (
-              mkdir "${{ env.DEPLOY_PATH }}"
-              echo ✅ Diretório criado: ${{ env.DEPLOY_PATH }}
+          if not exist "%DEPLOY_PATH%" (
+              mkdir "%DEPLOY_PATH%"
+              echo ✅ Diretório criado: %DEPLOY_PATH%
           ) else (
-              echo ✅ Diretório já existe: ${{ env.DEPLOY_PATH }}
+              echo ✅ Diretório já existe: %DEPLOY_PATH%
           )
 
       - name: 🔧 Garantir App Pool no IIS
         shell: cmd
         run: |
           echo Verificando App Pool...
-          "${{ env.APPCMD }}" list apppool "${{ env.IIS_APP_POOL }}" >nul 2>&1
+          %APPCMD% list apppool "%IIS_APP_POOL%" >nul 2>&1
           if %ERRORLEVEL% neq 0 (
               echo Criando App Pool...
-              "${{ env.APPCMD }}" add apppool /name:"${{ env.IIS_APP_POOL }}"
-              echo ✅ App Pool criado: ${{ env.IIS_APP_POOL }}
+              %APPCMD% add apppool /name:"%IIS_APP_POOL%"
+              echo ✅ App Pool criado: %IIS_APP_POOL%
           ) else (
-              echo ✅ App Pool já existe: ${{ env.IIS_APP_POOL }}
+              echo ✅ App Pool já existe: %IIS_APP_POOL%
           )
 
       - name: 🔧 Garantir Site no IIS
         shell: cmd
         run: |
           echo Verificando Website...
-          "${{ env.APPCMD }}" list site "${{ env.IIS_SITE_NAME }}" >nul 2>&1
+          %APPCMD% list site "%IIS_SITE_NAME%" >nul 2>&1
           if %ERRORLEVEL% neq 0 (
               echo Criando Website...
-              "${{ env.APPCMD }}" add site /name:"${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}" /bindings:http/*:5095:
-              "${{ env.APPCMD }}" set site "${{ env.IIS_SITE_NAME }}" /[path='/'].applicationPool:"${{ env.IIS_APP_POOL }}"
-              echo ✅ Website criado: ${{ env.IIS_SITE_NAME }}
+              %APPCMD% add site /name:"%IIS_SITE_NAME%" /physicalPath:"%DEPLOY_PATH%" /bindings:http/*:5095:
+              %APPCMD% set site "%IIS_SITE_NAME%" /[path='/'].applicationPool:"%IIS_APP_POOL%"
+              echo ✅ Website criado: %IIS_SITE_NAME%
           ) else (
-              echo ✅ Website já existe: ${{ env.IIS_SITE_NAME }}
-              "${{ env.APPCMD }}" set site "${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}"
+              echo ✅ Website já existe: %IIS_SITE_NAME%
+              %APPCMD% set site "%IIS_SITE_NAME%" /physicalPath:"%DEPLOY_PATH%"
           )
 
       - name: 🛑 Parar Application Pool no IIS
         shell: cmd
         run: |
           echo Parando App Pool...
-          "${{ env.APPCMD }}" stop apppool "${{ env.IIS_APP_POOL }}"
+          %APPCMD% stop apppool "%IIS_APP_POOL%"
           echo ✅ App Pool parado
-          timeout /t 3
+          timeout /t 3 /nobreak
 
       - name: 🗑️ Limpar diretório de deploy
         shell: cmd
         run: |
           echo Limpando diretório de deploy...
-          if exist "${{ env.DEPLOY_PATH }}" (
-              for /d %%x in ("${{ env.DEPLOY_PATH }}\*") do @rd /s /q "%%x"
-              for %%x in ("${{ env.DEPLOY_PATH }}\*") do @del /q "%%x"
+          if exist "%DEPLOY_PATH%" (
+              for /d %%x in ("%DEPLOY_PATH%\*") do @rd /s /q "%%x" 2>nul
+              for %%x in ("%DEPLOY_PATH%\*") do @del /q "%%x" 2>nul
               echo ✅ Diretório limpo
           )
 
@@ -102,7 +102,7 @@ jobs:
         shell: cmd
         run: |
           echo Copiando arquivos para IIS...
-          xcopy ".\build-output\*" "${{ env.DEPLOY_PATH }}" /E /Y /I
+          xcopy ".\build-output\*" "%DEPLOY_PATH%" /E /Y /I
           if %ERRORLEVEL% equ 0 (
               echo ✅ Arquivos copiados com sucesso
           ) else (
@@ -114,14 +114,14 @@ jobs:
         shell: cmd
         run: |
           echo Iniciando App Pool...
-          "${{ env.APPCMD }}" start apppool "${{ env.IIS_APP_POOL }}"
+          %APPCMD% start apppool "%IIS_APP_POOL%"
           echo ✅ App Pool iniciado
           
           echo Iniciando Website...
-          "${{ env.APPCMD }}" start site "${{ env.IIS_SITE_NAME }}"
+          %APPCMD% start site "%IIS_SITE_NAME%"
           echo ✅ Website iniciado
           
-          timeout /t 5
+          timeout /t 5 /nobreak
 
       - name: 🔍 Verificar saúde da aplicação
         shell: pwsh
