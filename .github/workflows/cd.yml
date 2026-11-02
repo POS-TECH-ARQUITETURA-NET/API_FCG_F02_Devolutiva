@@ -22,6 +22,12 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
 
     steps:
+      - name: 🔓 Habilitar execução de scripts PowerShell
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          Write-Host "✅ Execution Policy definida como Bypass"
+
       - name: 📥 Download do artefato de build
         uses: actions/download-artifact@v4
         with:
@@ -30,75 +36,120 @@ jobs:
           run-id: ${{ github.event.workflow_run.id || github.run_id }}
           path: ./build-output
 
+      - name: 🔍 Verificar se artefato foi baixado
+        shell: powershell
+        run: |
+          if (Test-Path ".\build-output") {
+              Write-Host "✅ Artefato encontrado"
+              Get-ChildItem ".\build-output" | Write-Host
+          } else {
+              Write-Host "❌ Artefato NÃO encontrado!"
+              exit 1
+          }
+
       - name: 🔧 Garantir site e app pool no IIS
         shell: powershell
         run: |
-          Import-Module WebAdministration
-
-          if (-not (Get-ChildItem IIS:\AppPools | Where-Object { $_.Name -eq "${{ env.IIS_APP_POOL }}" })) {
-              New-WebAppPool -Name "${{ env.IIS_APP_POOL }}"
+          Write-Host "Iniciando configuração do IIS..."
+          
+          Import-Module WebAdministration -ErrorAction Stop
+          
+          if (-not (Test-Path "${{ env.DEPLOY_PATH }}")) {
+              New-Item -ItemType Directory -Path "${{ env.DEPLOY_PATH }}" -Force | Out-Null
+              Write-Host "✅ Diretório criado: ${{ env.DEPLOY_PATH }}"
+          } else {
+              Write-Host "✅ Diretório já existe: ${{ env.DEPLOY_PATH }}"
           }
-
-          if (-not (Get-Website -Name "${{ env.IIS_SITE_NAME }}" -ErrorAction SilentlyContinue)) {
+          
+          $appPoolPath = "IIS:\AppPools\${{ env.IIS_APP_POOL }}"
+          if (-not (Test-Path $appPoolPath)) {
+              New-WebAppPool -Name "${{ env.IIS_APP_POOL }}" -ErrorAction Stop
+              Write-Host "✅ App Pool criado: ${{ env.IIS_APP_POOL }}"
+          } else {
+              Write-Host "✅ App Pool já existe: ${{ env.IIS_APP_POOL }}"
+          }
+          
+          $site = Get-Website -Name "${{ env.IIS_SITE_NAME }}" -ErrorAction SilentlyContinue
+          if (-not $site) {
               New-Website -Name "${{ env.IIS_SITE_NAME }}" `
                 -PhysicalPath "${{ env.DEPLOY_PATH }}" `
                 -ApplicationPool "${{ env.IIS_APP_POOL }}" `
                 -Port 5095 `
-                -Protocol http
+                -Protocol http `
+                -ErrorAction Stop | Out-Null
+              Write-Host "✅ Website criado: ${{ env.IIS_SITE_NAME }}"
+          } else {
+              Write-Host "✅ Website já existe: ${{ env.IIS_SITE_NAME }}"
+              Set-ItemProperty "IIS:\Sites\${{ env.IIS_SITE_NAME }}" -Name physicalPath -Value "${{ env.DEPLOY_PATH }}" -ErrorAction SilentlyContinue
           }
 
       - name: 🛑 Parar Application Pool no IIS
         shell: powershell
         run: |
+          Write-Host "Parando App Pool..."
           Import-Module WebAdministration
+          
           Stop-WebAppPool -Name "${{ env.IIS_APP_POOL }}" -ErrorAction SilentlyContinue
+          Write-Host "✅ App Pool parado"
           Start-Sleep -Seconds 3
 
       - name: 🗑️ Limpar diretório de deploy
         shell: powershell
         run: |
-          if (-not (Test-Path "${{ env.DEPLOY_PATH }}")) {
-              New-Item -ItemType Directory -Path "${{ env.DEPLOY_PATH }}" -Force | Out-Null
-          }
-
-          Get-ChildItem "${{ env.DEPLOY_PATH }}" -Recurse -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-          Get-ChildItem "${{ env.DEPLOY_PATH }}" -Force | Remove-Item -Force -ErrorAction SilentlyContinue
+          Write-Host "Limpando diretório de deploy..."
+          
+          Get-ChildItem -Path "${{ env.DEPLOY_PATH }}" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host "✅ Diretório limpo"
 
       - name: 📤 Copiar arquivos para IIS
         shell: powershell
         run: |
-          Copy-Item -Path ".\build-output\*" -Destination "${{ env.DEPLOY_PATH }}" -Recurse -Force
+          Write-Host "Copiando arquivos para IIS..."
+          Copy-Item -Path ".\build-output\*" -Destination "${{ env.DEPLOY_PATH }}" -Recurse -Force -ErrorAction Stop
+          Write-Host "✅ Arquivos copiados com sucesso"
 
       - name: ✅ Iniciar site e app pool
         shell: powershell
         run: |
+          Write-Host "Iniciando App Pool e Website..."
           Import-Module WebAdministration
+          
           Start-WebAppPool -Name "${{ env.IIS_APP_POOL }}" -ErrorAction SilentlyContinue
-          Start-WebSite -Name "${{ env.IIS_SITE_NAME }}" -ErrorAction SilentlyContinue
+          Write-Host "✅ App Pool iniciado"
+          
+          Start-Website -Name "${{ env.IIS_SITE_NAME }}" -ErrorAction SilentlyContinue
+          Write-Host "✅ Website iniciado"
+          
           Start-Sleep -Seconds 5
 
       - name: 🔍 Verificar saúde da aplicação
         shell: powershell
         run: |
-          $maxAttempts = 10
+          $maxAttempts = 12
           $attempt = 0
-
+          $success = $false
+          
+          Write-Host "Aguardando aplicação inicializar..."
+          
           while ($attempt -lt $maxAttempts) {
             try {
-              $response = Invoke-WebRequest -Uri "${{ env.APP_URL }}" -UseBasicParsing -TimeoutSec 5
+              $response = Invoke-WebRequest -Uri "${{ env.APP_URL }}" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
               if ($response.StatusCode -eq 200) {
-                Write-Host "✅ Aplicação está respondendo corretamente!"
-                exit 0
+                Write-Host "✅ Aplicação respondendo corretamente!"
+                $success = $true
+                break
               }
             } catch {
               $attempt++
-              Write-Host "⏳ Tentativa $attempt/$maxAttempts falhou..."
+              Write-Host "⏳ Tentativa $attempt/$maxAttempts - Aguardando 5 segundos..."
               Start-Sleep -Seconds 5
             }
           }
-
-          Write-Host "❌ Falha ao verificar saúde da aplicação após $maxAttempts tentativas"
-          exit 1
+          
+          if (-not $success) {
+            Write-Host "❌ Aplicação não respondeu após $maxAttempts tentativas"
+            exit 1
+          }
 
       - name: 💬 Notificar sucesso
         if: success()
@@ -111,4 +162,4 @@ jobs:
         if: failure()
         shell: powershell
         run: |
-          Write-Host "❌ Falha no deploy. Verifique os logs do IIS."
+          Write-Host "❌ Falha no deploy"
