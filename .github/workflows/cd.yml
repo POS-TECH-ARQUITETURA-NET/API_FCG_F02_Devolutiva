@@ -31,7 +31,7 @@ jobs:
           path: ./build-output
 
       - name: 🔍 Verificar se artefato foi baixado
-        shell: pwsh
+        shell: powershell
         run: |
           if (Test-Path ".\build-output") {
               Write-Host "✅ Artefato encontrado"
@@ -42,7 +42,7 @@ jobs:
           }
 
       - name: 🔧 Criar diretório de deploy
-        shell: pwsh
+        shell: powershell
         run: |
           $deployPath = "${{ env.DEPLOY_PATH }}"
           if (-not (Test-Path $deployPath)) {
@@ -53,7 +53,7 @@ jobs:
           }
 
       - name: 🔧 Garantir App Pool no IIS
-        shell: pwsh
+        shell: powershell
         run: |
           $appPoolName = "${{ env.IIS_APP_POOL }}"
           $appcmd = "C:\Windows\System32\inetsrv\appcmd.exe"
@@ -74,7 +74,7 @@ jobs:
           }
 
       - name: 🔧 Garantir Site no IIS
-        shell: pwsh
+        shell: powershell
         run: |
           $siteName = "${{ env.IIS_SITE_NAME }}"
           $appPoolName = "${{ env.IIS_APP_POOL }}"
@@ -99,7 +99,7 @@ jobs:
           }
 
       - name: 🛑 Parar Application Pool no IIS
-        shell: pwsh
+        shell: powershell
         run: |
           $appPoolName = "${{ env.IIS_APP_POOL }}"
           $appcmd = "C:\Windows\System32\inetsrv\appcmd.exe"
@@ -111,7 +111,7 @@ jobs:
           Start-Sleep -Seconds 3
 
       - name: 🗑️ Limpar diretório de deploy
-        shell: pwsh
+        shell: powershell
         run: |
           $deployPath = "${{ env.DEPLOY_PATH }}"
           
@@ -123,7 +123,7 @@ jobs:
           }
 
       - name: 📤 Copiar arquivos para IIS
-        shell: pwsh
+        shell: powershell
         run: |
           $source = ".\build-output"
           $destination = "${{ env.DEPLOY_PATH }}"
@@ -144,7 +144,7 @@ jobs:
           }
 
       - name: ✅ Iniciar Application Pool e Site no IIS
-        shell: pwsh
+        shell: powershell
         run: |
           $appPoolName = "${{ env.IIS_APP_POOL }}"
           $siteName = "${{ env.IIS_SITE_NAME }}"
@@ -161,7 +161,7 @@ jobs:
           Start-Sleep -Seconds 5
 
       - name: 🔍 Verificar saúde da aplicação
-        shell: pwsh
+        shell: powershell
         run: |
           $appUrl = "${{ env.APP_URL }}"
           $maxAttempts = 15
@@ -197,7 +197,7 @@ jobs:
 
       - name: 💬 Notificar sucesso
         if: success()
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host ""
           Write-Host "✅ Deploy realizado com sucesso!"
@@ -206,7 +206,7 @@ jobs:
 
       - name: 💬 Notificar falha
         if: failure()
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host ""
           Write-Host "❌ Falha no deploy - Verifique os logs acima"
