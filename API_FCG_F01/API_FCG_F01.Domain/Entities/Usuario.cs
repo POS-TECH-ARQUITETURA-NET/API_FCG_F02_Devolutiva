@@ -36,7 +36,7 @@ namespace API_FCG_F01.Domain.Entities
 
     
     /// <summary>
-    /// Classe que representa um usuário do sistema API FCG 7.
+    /// Classe que representa um usuário do sistema API FCG 8.
     /// </summary>
     public sealed class Usuario : EntityBase
     {
