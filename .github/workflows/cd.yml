@@ -79,7 +79,7 @@ jobs:
               echo ✅ Website criado: ${{ env.IIS_SITE_NAME }}
           ) else (
               echo ✅ Website já existe: ${{ env.IIS_SITE_NAME }}
-              "C:\Windows\System32\inetsrv\appcmd.exe" set site "${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}"
+              "C:\Windows\System32\inetsrv\appcmd.exe" set site "${{ env.IIS_SITE_NAME }}" /[path='/'].physicalPath:"${{ env.DEPLOY_PATH }}"
           )
 
       - name: 🛑 Parar Application Pool no IIS
