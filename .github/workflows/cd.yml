@@ -67,20 +67,81 @@ jobs:
           )
 
       - name: 🔧 Garantir Site no IIS
-        shell: cmd
+        shell: powershell
         run: |
-          @echo off
-          echo Verificando Website...
-          "C:\Windows\System32\inetsrv\appcmd.exe" list site "${{ env.IIS_SITE_NAME }}"
-          if %ERRORLEVEL% neq 0 (
-              echo Criando Website...
-              "C:\Windows\System32\inetsrv\appcmd.exe" add site /name:"${{ env.IIS_SITE_NAME }}" /physicalPath:"${{ env.DEPLOY_PATH }}" /bindings:http/*:5095:
-              "C:\Windows\System32\inetsrv\appcmd.exe" set site "${{ env.IIS_SITE_NAME }}" /[path='/'].applicationPool:"${{ env.IIS_APP_POOL }}"
-              echo ✅ Website criado: ${{ env.IIS_SITE_NAME }}
-          ) else (
-              echo ✅ Website já existe: ${{ env.IIS_SITE_NAME }}
-              "C:\Windows\System32\inetsrv\appcmd.exe" set site "${{ env.IIS_SITE_NAME }}" /[path='/'].physicalPath:"${{ env.DEPLOY_PATH }}"
-          )
+          $ErrorActionPreference = "Stop"
+
+          $siteName = "${{ env.IIS_SITE_NAME }}"
+          $appPoolName = "${{ env.IIS_APP_POOL }}"
+          $deployPath = "${{ env.DEPLOY_PATH }}"
+
+          $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
+
+          Write-Host "Verificando Website: $siteName"
+
+          # Verifica se o AppCmd existe
+          if (-not (Test-Path $appcmd)) {
+              throw "AppCmd.exe não encontrado!"
+          }
+
+          # Verifica se o diretório de publicação existe
+          if (-not (Test-Path $deployPath)) {
+              throw "Diretório de deploy não encontrado: $deployPath"
+          }
+
+          # Verifica se o Website já existe
+          $null = & $appcmd list site $siteName 2>$null
+
+          if ($LASTEXITCODE -ne 0) {
+
+              Write-Host "Criando Website: $siteName"
+
+              & $appcmd add site `
+                "/name:$siteName" `
+                "/physicalPath:$deployPath" `
+                "/bindings:http/*:5095:"
+
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Erro ao criar o Website no IIS."
+              }
+
+              Write-Host "Website criado com sucesso!"
+
+          } else {
+
+              Write-Host "Website já existe: $siteName"
+          }
+
+          # Configura o caminho físico do diretório virtual raiz
+          Write-Host "Configurando caminho físico..."
+
+          & $appcmd set vdir `
+            "/vdir.name:$siteName/" `
+            "/physicalPath:$deployPath"
+
+          if ($LASTEXITCODE -ne 0) {
+              throw "Erro ao configurar o caminho físico do Virtual Directory."
+          }
+
+          # Associa o Website ao Application Pool
+          Write-Host "Associando Application Pool..."
+
+          & $appcmd set app `
+            "/app.name:$siteName/" `
+            "/applicationPool:$appPoolName"
+
+          if ($LASTEXITCODE -ne 0) {
+              throw "Erro ao associar o Application Pool."
+          }
+
+          Write-Host "Website configurado com sucesso!"
+
+          # Exibe as configurações finais
+          Write-Host "Verificando configurações..."
+
+          & $appcmd list site $siteName
+          & $appcmd list vdirs "/app.name:$siteName/"
+          & $appcmd list apps "/site.name:$siteName"
 
       - name: 🛑 Parar Application Pool no IIS
         shell: cmd
