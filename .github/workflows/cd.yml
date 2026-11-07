@@ -144,28 +144,63 @@ jobs:
           & $appcmd list apps "/site.name:$siteName"
 
       - name: 🛑 Parar Application Pool no IIS
-        shell: cmd
+        shell: powershell
         run: |
-          @echo off
+          $ErrorActionPreference = "Stop"
 
-          echo Parando App Pool...
+          $appPoolName = "${{ env.IIS_APP_POOL }}"
+          $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
 
-          "C:\Windows\System32\inetsrv\appcmd.exe" stop apppool "${{ env.IIS_APP_POOL }}"
+          Write-Host "Verificando estado do App Pool: $appPoolName"
 
-          if errorlevel 1 (
-              echo ❌ Erro ao parar Application Pool!
-              exit /b 1
-          )
+          if (-not (Test-Path $appcmd)) {
+              throw "AppCmd.exe não encontrado!"
+          }
 
-          echo ✅ App Pool parado
+          # Consulta o estado atual do Application Pool
+          $appPoolInfo = & $appcmd list apppool $appPoolName
 
-          echo Aguardando liberacao dos arquivos...
+          if ($LASTEXITCODE -ne 0) {
+              throw "Não foi possível consultar o Application Pool."
+          }
 
-          powershell.exe -NoProfile -NonInteractive -Command "Start-Sleep -Seconds 3"
+          Write-Host $appPoolInfo
 
-          if errorlevel 1 exit /b 1
+          # Verifica se está iniciado
+          if ($appPoolInfo -match "state:Started") {
 
-          echo ✅ Aguardo concluido!
+              Write-Host "App Pool está iniciado. Parando..."
+
+              & $appcmd stop apppool $appPoolName
+
+              if ($LASTEXITCODE -ne 0) {
+
+                  # Confere se outra operação já conseguiu pará-lo
+                  $appPoolInfo = & $appcmd list apppool $appPoolName
+
+                  if ($LASTEXITCODE -ne 0 -or $appPoolInfo -notmatch "state:Stopped") {
+                      throw "Erro ao parar o Application Pool."
+                  }
+              }
+
+              Write-Host "✅ App Pool parado com sucesso!"
+
+          }
+          elseif ($appPoolInfo -match "state:Stopped") {
+
+              Write-Host "✅ App Pool já está parado. Continuando o deploy..."
+
+          }
+          else {
+
+              throw "Estado inesperado do Application Pool: $appPoolInfo"
+
+          }
+
+          # Aguarda a liberação dos arquivos
+          Start-Sleep -Seconds 3
+
+          Write-Host "✅ Etapa concluída!"
 
       - name: 🗑️ Limpar diretório de deploy
         shell: powershell
