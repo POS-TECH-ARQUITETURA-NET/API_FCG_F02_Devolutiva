@@ -147,10 +147,25 @@ jobs:
         shell: cmd
         run: |
           @echo off
+
           echo Parando App Pool...
+
           "C:\Windows\System32\inetsrv\appcmd.exe" stop apppool "${{ env.IIS_APP_POOL }}"
+
+          if errorlevel 1 (
+              echo ❌ Erro ao parar Application Pool!
+              exit /b 1
+          )
+
           echo ✅ App Pool parado
-          timeout /t 3
+
+          echo Aguardando liberacao dos arquivos...
+
+          powershell.exe -NoProfile -NonInteractive -Command "Start-Sleep -Seconds 3"
+
+          if errorlevel 1 exit /b 1
+
+          echo ✅ Aguardo concluido!
 
       - name: 🗑️ Limpar diretório de deploy
         shell: powershell
@@ -187,15 +202,32 @@ jobs:
         shell: cmd
         run: |
           @echo off
+
           echo Iniciando App Pool...
+
           "C:\Windows\System32\inetsrv\appcmd.exe" start apppool "${{ env.IIS_APP_POOL }}"
+
+          if errorlevel 1 (
+              echo ❌ Erro ao iniciar Application Pool!
+              exit /b 1
+          )
+
           echo ✅ App Pool iniciado
-          
+
           echo Iniciando Website...
+
           "C:\Windows\System32\inetsrv\appcmd.exe" start site "${{ env.IIS_SITE_NAME }}"
+
+          if errorlevel 1 (
+              echo ❌ Erro ao iniciar Website!
+              exit /b 1
+          )
+
           echo ✅ Website iniciado
-          
-          timeout /t 5
+
+          powershell.exe -NoProfile -NonInteractive -Command "Start-Sleep -Seconds 5"
+
+          if errorlevel 1 exit /b 1
 
       - name: 🔍 Verificar saúde da aplicação
         shell: powershell
