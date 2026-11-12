@@ -269,7 +269,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
 
-          $appUrl = "http://localhost:5095/swagger"
+          $appUrl = $env:APP_URL
           $maxAttempts = 5
           $success = $false
           $lastError = ""
