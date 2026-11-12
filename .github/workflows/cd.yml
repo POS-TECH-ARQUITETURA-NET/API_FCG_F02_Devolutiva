@@ -11,8 +11,8 @@ on:
 env:
   IIS_SITE_NAME: 'API_FCG_F01'
   IIS_APP_POOL: 'API_FCG_F01_AppPool'
-  DEPLOY_PATH: 'C:\inetpub\wwwroot\API_FCG_F01'
-  APP_URL: 'http://localhost:5095/swagger'
+  DEPLOY_PATH: 'C:\inetpub\wwwroot\API_FCG_F01'  
+  APP_URL: 'http://localhost:5095/health'
 
 jobs:
   deploy-to-iis:
@@ -267,33 +267,126 @@ jobs:
       - name: 🔍 Verificar saúde da aplicação
         shell: powershell
         run: |
-          $appUrl = "${{ env.APP_URL }}"
-          $maxAttempts = 15
-          $attempt = 0
+          $ErrorActionPreference = "Continue"
+
+          $appUrl = "http://localhost:5095/swagger"
+          $maxAttempts = 5
           $success = $false
-          
-          Write-Host "Aguardando aplicação inicializar..."
+          $lastError = ""
+
+          Write-Host "Verificando aplicação..."
           Write-Host "URL: $appUrl"
-          
-          while ($attempt -lt $maxAttempts) {
-            try {
-              $response = Invoke-WebRequest -Uri $appUrl -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
-              if ($response.StatusCode -eq 200) {
-                Write-Host "✅ Aplicação respondendo corretamente!"
-                $success = $true
-                break
+
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+
+              try {
+
+                  $response = Invoke-WebRequest `
+                      -Uri $appUrl `
+                      -UseBasicParsing `
+                      -TimeoutSec 10 `
+                      -ErrorAction Stop
+
+                  $statusCode = [int]$response.StatusCode
+
+                  Write-Host "Resposta HTTP: $statusCode"
+
+                  if ($statusCode -ge 200 -and $statusCode -lt 300) {
+
+                      Write-Host "✅ Aplicação respondendo corretamente!"
+                      $success = $true
+                      break
+
+                  }
+
               }
-            } catch {
-              $attempt++
-              $remainingAttempts = $maxAttempts - $attempt
-              Write-Host "⏳ Tentativa $attempt/$maxAttempts - $remainingAttempts tentativas restantes..."
-              Start-Sleep -Seconds 4
-            }
+              catch {
+
+                  $httpResponse = $_.Exception.Response
+
+                  if ($null -ne $httpResponse) {
+
+                      $statusCode = [int]$httpResponse.StatusCode
+
+                      $lastError = "HTTP $statusCode - $($httpResponse.StatusDescription)"
+
+                      Write-Host "❌ Resposta recebida: $lastError"
+
+                      try {
+                          $reader = New-Object System.IO.StreamReader(
+                              $httpResponse.GetResponseStream()
+                          )
+
+                          $body = $reader.ReadToEnd()
+                          $reader.Close()
+
+                          if ($body) {
+                              Write-Host "Detalhes da resposta:"
+                              Write-Host $body.Substring(
+                                  0,
+                                  [Math]::Min(1000, $body.Length)
+                              )
+                          }
+                      }
+                      catch {
+                          Write-Host "Não foi possível ler o corpo da resposta."
+                      }
+
+                  }
+                  else {
+
+                      $lastError = $_.Exception.Message
+
+                      Write-Host "❌ Erro de conexão: $lastError"
+
+                  }
+
+              }
+
+              if (-not $success -and $attempt -lt $maxAttempts) {
+
+                  Write-Host "Tentativa $attempt/$maxAttempts. Aguardando..."
+
+                  Start-Sleep -Seconds 5
+
+              }
           }
-          
+
           if (-not $success) {
-            Write-Host "❌ Aplicação não respondeu após $maxAttempts tentativas"
-            exit 1
+
+              Write-Host ""
+              Write-Host "❌ Aplicação não respondeu."
+
+              Write-Host "Verificando estado do IIS..."
+
+              $appcmd = "$env:windir\System32\inetsrv\appcmd.exe"
+
+              & $appcmd list site "${{ env.IIS_SITE_NAME }}"
+
+              & $appcmd list apppool "${{ env.IIS_APP_POOL }}"
+
+              Write-Host "Verificando porta 5095..."
+
+              $tcp = Test-NetConnection `
+                  -ComputerName localhost `
+                  -Port 5095 `
+                  -InformationLevel Quiet
+
+              Write-Host "Porta 5095 acessível: $tcp"
+
+              Write-Host "Verificando arquivos publicados..."
+
+              $deployPath = "${{ env.DEPLOY_PATH }}"
+
+              Write-Host "web.config encontrado: $(Test-Path "$deployPath\web.config")"
+
+              Get-ChildItem $deployPath -Filter "*.dll" |
+                  Select-Object -First 10 -ExpandProperty Name
+
+              Write-Host ""
+              Write-Host "Último erro: $lastError"
+
+              exit 1
           }
 
       - name: 💬 Notificar sucesso

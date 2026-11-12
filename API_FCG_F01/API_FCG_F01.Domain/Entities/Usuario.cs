@@ -3,7 +3,7 @@ using System.Net.Mail;
 namespace API_FCG_F01.Domain.Entities
 {
     /// <summary>
-    /// Classe que representa um usuário do sistema API FCG 16.
+    /// Classe que representa um usuário do sistema API FCG 18.
     /// </summary>
     public sealed class Usuario : EntityBase
     {
